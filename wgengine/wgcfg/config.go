@@ -20,6 +20,7 @@ type Config struct {
 	Name       string
 	NodeID     tailcfg.StableNodeID
 	PrivateKey key.NodePrivate
+	PQCSeed    []byte // ML-KEM-768 seed for post-quantum handshakes
 	Addresses  []netip.Prefix
 	MTU        uint16
 	DNS        []netip.Addr
@@ -43,6 +44,7 @@ type Peer struct {
 	V6MasqAddr          *netip.Addr // if non-nil, masquerade IPv6 traffic to this peer using this address
 	IsJailed            bool        // if true, this peer is jailed and cannot initiate connections
 	PersistentKeepalive uint16      // in seconds between keep-alives; 0 to disable
+	PQCPublicKey        []byte      // if non-nil, ML-KEM-768 public key for post-quantum handshakes
 	// wireguard-go's endpoint for this peer. It should always equal Peer.PublicKey.
 	// We represent it explicitly so that we can detect if they diverge and recover.
 	// There is no need to set WGEndpoint explicitly when constructing a Peer by hand.

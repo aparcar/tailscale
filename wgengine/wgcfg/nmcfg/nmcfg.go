@@ -53,8 +53,15 @@ func WGCfg(nm *netmap.NetworkMap, logf logger.Logf, flags netmap.WGConfigFlags, 
 	cfg := &wgcfg.Config{
 		Name:       "tailscale",
 		PrivateKey: nm.PrivateKey,
+		PQCSeed:    nm.PQCSeed,
 		Addresses:  nm.GetAddresses().AsSlice(),
 		Peers:      make([]wgcfg.Peer, 0, len(nm.Peers)),
+	}
+
+	if len(nm.PQCSeed) > 0 {
+		logf("wgcfg: device has PQC seed (len=%d)", len(nm.PQCSeed))
+	} else {
+		logf("wgcfg: device has NO PQC seed")
 	}
 
 	// Setup log IDs for data plane audit logging.
@@ -85,6 +92,7 @@ func WGCfg(nm *netmap.NetworkMap, logf logger.Logf, flags netmap.WGConfigFlags, 
 	skippedExpired := new(bytes.Buffer)
 
 	for _, peer := range nm.Peers {
+		logf("wgcfg: Processing peer %s, allowedIPs count=%d", peer.Key().ShortString(), peer.AllowedIPs().Len())
 		if peer.DiscoKey().IsZero() && peer.HomeDERP() == 0 && !peer.IsWireGuardOnly() {
 			// Peer predates both DERP and active discovery, we cannot
 			// communicate with it.
@@ -114,11 +122,21 @@ func WGCfg(nm *netmap.NetworkMap, logf logger.Logf, flags netmap.WGConfigFlags, 
 		})
 		cpeer := &cfg.Peers[len(cfg.Peers)-1]
 
+		// Set PQC public key if available
+		if pqcPubKey := peer.PQCPublicKey(); pqcPubKey.Len() > 0 {
+			cpeer.PQCPublicKey = pqcPubKey.AsSlice()
+			logf("wgcfg: peer %s has PQC public key (len=%d)", peer.Key().ShortString(), pqcPubKey.Len())
+		} else {
+			logf("wgcfg: peer %s has NO PQC public key", peer.Key().ShortString())
+		}
+
 		didExitNodeWarn := false
 		cpeer.V4MasqAddr = peer.SelfNodeV4MasqAddrForThisPeer().Clone()
 		cpeer.V6MasqAddr = peer.SelfNodeV6MasqAddrForThisPeer().Clone()
 		cpeer.IsJailed = peer.IsJailed()
+
 		for _, allowedIP := range peer.AllowedIPs().All() {
+			logf("wgcfg: Peer %s allowedIP: %s (bits=%d, isDefaultRoute=%v)", peer.Key().ShortString(), allowedIP, allowedIP.Bits(), allowedIP.Bits() == 0)
 			if allowedIP.Bits() == 0 && peer.StableID() != exitNode {
 				if didExitNodeWarn {
 					// Don't log about both the IPv4 /0 and IPv6 /0.
@@ -141,8 +159,10 @@ func WGCfg(nm *netmap.NetworkMap, logf logger.Logf, flags netmap.WGConfigFlags, 
 			}
 			cpeer.AllowedIPs = append(cpeer.AllowedIPs, allowedIP)
 		}
+		logf("wgcfg: Peer %s final allowedIPs count in WireGuard config: %d", peer.Key().ShortString(), len(cpeer.AllowedIPs))
 	}
 
+	logf("wgcfg: WGCfg returning with %d peers total", len(cfg.Peers))
 	if skippedUnselected.Len() > 0 {
 		logf("[v1] wgcfg: skipped unselected default routes from: %s", skippedUnselected.Bytes())
 	}

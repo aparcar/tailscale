@@ -388,7 +388,7 @@ func formatNodes(nodes []*tailcfg.Node) string {
 }
 
 func newTestMapSession(t testing.TB, nu NetmapUpdater) *mapSession {
-	ms := newMapSession(key.NewNode(), nu, new(controlknobs.Knobs))
+	ms := newMapSession(key.NewNode(), nil, nu, new(controlknobs.Knobs))
 	t.Cleanup(ms.Close)
 	ms.logf = t.Logf
 	return ms

@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/mlkem"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -326,6 +327,7 @@ func NewDirect(opts Options) (*Direct, error) {
 	if strings.Contains(opts.ServerURL, "controlplane.tailscale.com") && envknob.Bool("TS_PANIC_IF_HIT_MAIN_CONTROL") {
 		c.panicOnUse = true
 	}
+
 	return c, nil
 }
 
@@ -510,6 +512,12 @@ func (c *Direct) doLogin(ctx context.Context, opt loginOpt) (mustRegen bool, new
 	serverNoiseKey := c.serverNoiseKey
 	authKey, isWrapped, wrappedSig, wrappedKey := tka.DecodeWrappedAuthkey(c.authKey, c.logf)
 	hi := c.hostInfoLocked()
+
+	// Populate PQC public key in Hostinfo if available
+	if len(persist.PQCPublicKey) > 0 {
+		hi.PQCPublicKey = persist.PQCPublicKey
+	}
+
 	backendLogID := hi.BackendLogID
 	expired := !c.expiry.IsZero() && c.expiry.Before(c.clock.Now())
 	c.mu.Unlock()
@@ -577,9 +585,24 @@ func (c *Direct) doLogin(ctx context.Context, opt loginOpt) (mustRegen bool, new
 		c.logf("Generating a new nodekey.")
 		persist.OldPrivateNodeKey = persist.PrivateNodeKey
 		tryingNewKey = key.NewNode()
+
+		// Generate PQC keys alongside the node key
+		if err := c.generatePQCKeys(persist); err != nil {
+			c.logf("Failed to generate PQC keys: %v", err)
+			// Continue without PQC - it's optional
+		}
 	default:
 		// Try refreshing the current key first
 		tryingNewKey = persist.PrivateNodeKey
+
+		// Generate PQC keys if not already present (for existing nodes upgrading to PQC)
+		if len(persist.PQCSeed) == 0 {
+			c.logf("Generating PQC keys for existing node (no PQC seed found)")
+			if err := c.generatePQCKeys(persist); err != nil {
+				c.logf("Failed to generate PQC keys: %v", err)
+				// Continue without PQC - it's optional
+			}
+		}
 	}
 	if !persist.OldPrivateNodeKey.IsZero() {
 		oldNodeKey = persist.OldPrivateNodeKey.Public()
@@ -761,6 +784,26 @@ func (c *Direct) doLogin(ctx context.Context, opt loginOpt) (mustRegen bool, new
 	return false, resp.AuthURL, nil, nil
 }
 
+// generatePQCKeys generates new PQC (ML-KEM-768) keys for the node.
+// The seed and public key are stored in the persist structure.
+func (c *Direct) generatePQCKeys(persist *persist.Persist) error {
+	// Generate ML-KEM-768 keypair using Go's crypto/mlkem
+	dk, err := mlkem.GenerateKey768()
+	if err != nil {
+		return fmt.Errorf("generating ML-KEM-768 key: %w", err)
+	}
+
+	// Store the 64-byte seed (for deterministic key regeneration)
+	persist.PQCSeed = dk.Bytes()
+
+	// Store the 1184-byte public key
+	ek := dk.EncapsulationKey()
+	persist.PQCPublicKey = ek.Bytes()
+
+	c.logf("Generated new PQC keys (ML-KEM-768)")
+	return nil
+}
+
 // newEndpoints acquires c.mu and sets the local port and endpoints and reports
 // whether they've changed.
 //
@@ -854,6 +897,13 @@ func (c *Direct) sendMapRequest(ctx context.Context, isStreaming bool, nu Netmap
 	serverURL := c.serverURL
 	serverNoiseKey := c.serverNoiseKey
 	hi := c.hostInfoLocked()
+
+	// Populate PQC public key in Hostinfo if available
+	persistStruct := persist.AsStruct()
+	if len(persistStruct.PQCPublicKey) > 0 {
+		hi.PQCPublicKey = persistStruct.PQCPublicKey
+	}
+
 	backendLogID := hi.BackendLogID
 	connectionHandleForTest := c.connectionHandleForTest
 	var epStrs []string
@@ -895,6 +945,7 @@ func (c *Direct) sendMapRequest(ctx context.Context, isStreaming bool, nu Netmap
 	}
 
 	nodeKey := persist.PublicNodeKey()
+
 	request := &tailcfg.MapRequest{
 		Version:                 tailcfg.CurrentCapabilityVersion,
 		KeepAlive:               true,
@@ -998,7 +1049,7 @@ func (c *Direct) sendMapRequest(ctx context.Context, isStreaming bool, nu Netmap
 		return nil
 	}
 
-	sess := newMapSession(persist.PrivateNodeKey(), nu, c.controlKnobs)
+	sess := newMapSession(persist.PrivateNodeKey(), persist.PQCSeed().AsSlice(), nu, c.controlKnobs)
 	defer sess.Close()
 	sess.cancel = cancel
 	sess.logf = c.logf

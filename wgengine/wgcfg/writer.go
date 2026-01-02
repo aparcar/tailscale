@@ -21,6 +21,7 @@ import (
 // about peers that have not changed since the previous time we wrote our
 // Config.
 func (cfg *Config) ToUAPI(logf logger.Logf, w io.Writer, prev *Config) error {
+	logf("wgcfg: ToUAPI called with %d peers", len(cfg.Peers))
 	var stickyErr error
 	set := func(key, value string) {
 		if stickyErr != nil {
@@ -43,6 +44,18 @@ func (cfg *Config) ToUAPI(logf logger.Logf, w io.Writer, prev *Config) error {
 		set("private_key", cfg.PrivateKey.UntypedHexString())
 	}
 
+	// Set PQC seed if it has changed
+	if len(cfg.PQCSeed) > 0 {
+		if !bytesEqual(prev.PQCSeed, cfg.PQCSeed) {
+			logf("wgcfg: setting device PQC private key (seed len=%d, changed from prev)", len(cfg.PQCSeed))
+			set("pqc_private_key", fmt.Sprintf("%x", cfg.PQCSeed))
+		} else {
+			logf("wgcfg: device PQC seed unchanged (len=%d), not rewriting", len(cfg.PQCSeed))
+		}
+	} else {
+		logf("wgcfg: device has no PQC seed to set")
+	}
+
 	old := make(map[key.NodePublic]Peer)
 	for _, p := range prev.Peers {
 		old[p.PublicKey] = p
@@ -50,6 +63,7 @@ func (cfg *Config) ToUAPI(logf logger.Logf, w io.Writer, prev *Config) error {
 
 	// Add/configure all new peers.
 	for _, p := range cfg.Peers {
+		logf("wgcfg: WRITER processing peer %s (has %d bytes PQC key)", p.PublicKey.ShortString(), len(p.PQCPublicKey))
 		oldPeer, wasPresent := old[p.PublicKey]
 
 		// We only want to write the peer header/version if we're about
@@ -63,11 +77,15 @@ func (cfg *Config) ToUAPI(logf logger.Logf, w io.Writer, prev *Config) error {
 		willSetEndpoint := oldPeer.WGEndpoint != p.PublicKey || !wasPresent
 		willChangeIPs := !cidrsEqual(oldPeer.AllowedIPs, p.AllowedIPs) || !wasPresent
 		willChangeKeepalive := oldPeer.PersistentKeepalive != p.PersistentKeepalive // if not wasPresent, no need to redundantly set zero (default)
+		willChangePQC := !bytesEqual(oldPeer.PQCPublicKey, p.PQCPublicKey) || !wasPresent
 
-		if !willSetEndpoint && !willChangeIPs && !willChangeKeepalive {
+		if !willSetEndpoint && !willChangeIPs && !willChangeKeepalive && !willChangePQC {
 			// It's safe to skip doing anything here; wireguard-go
 			// will not remove a peer if it's unspecified unless we
 			// tell it to (which we do below if necessary).
+			if len(p.PQCPublicKey) > 0 {
+				logf("wgcfg: peer %s: skipping (no changes), has PQC key (len=%d)", p.PublicKey.ShortString(), len(p.PQCPublicKey))
+			}
 			continue
 		}
 
@@ -99,6 +117,19 @@ func (cfg *Config) ToUAPI(logf logger.Logf, w io.Writer, prev *Config) error {
 			for _, ipp := range p.AllowedIPs {
 				set("allowed_ip", ipp.String())
 			}
+		}
+
+		// Set PQC public key if changed
+		logf("wgcfg: WRITER peer %s: willChangePQC=%v, hasPQC=%v, len=%d, wasPresent=%v", p.PublicKey.ShortString(), willChangePQC, len(p.PQCPublicKey) > 0, len(p.PQCPublicKey), wasPresent)
+		if len(p.PQCPublicKey) > 0 {
+			if willChangePQC {
+				logf("wgcfg: setting peer %s PQC public key (len=%d, wasPresent=%v)", p.PublicKey.ShortString(), len(p.PQCPublicKey), wasPresent)
+				set("pqc_public_key", fmt.Sprintf("%x", p.PQCPublicKey))
+			} else {
+				logf("wgcfg: peer %s PQC public key unchanged (len=%d), not rewriting", p.PublicKey.ShortString(), len(p.PQCPublicKey))
+			}
+		} else {
+			logf("wgcfg: peer %s has NO PQC public key", p.PublicKey.ShortString())
 		}
 
 		// Set PersistentKeepalive after the peer is otherwise configured,
@@ -147,6 +178,21 @@ func cidrsEqual(x, y []netip.Prefix) bool {
 	}
 	for _, v := range y {
 		if !m[v] {
+			return false
+		}
+	}
+	return true
+}
+
+func bytesEqual(x, y []byte) bool {
+	if len(x) != len(y) {
+		return false
+	}
+	if len(x) == 0 {
+		return true
+	}
+	for i := range x {
+		if x[i] != y[i] {
 			return false
 		}
 	}

@@ -1342,6 +1342,7 @@ func (b *LocalBackend) populatePeerStatusLocked(sb *ipnstate.StatusBuilder) {
 			SSH_HostKeys:    p.Hostinfo().SSH_HostKeys().AsSlice(),
 			Location:        p.Hostinfo().Location().AsStruct(),
 			Capabilities:    p.Capabilities().AsSlice(),
+			PQCEnabled:      p.PQCPublicKey().Len() > 0,
 		}
 		for _, f := range b.extHost.Hooks().SetPeerStatus {
 			f(ps, p, cn)
@@ -1372,6 +1373,9 @@ func peerStatusFromNode(ps *ipnstate.PeerStatus, n tailcfg.NodeView) {
 	ps.ID = n.StableID()
 	ps.Created = n.Created()
 	ps.ExitNodeOption = tsaddr.ContainsExitRoutes(n.AllowedIPs())
+	if n.PQCPublicKey().Len() > 0 {
+		ps.PQCEnabled = true
+	}
 	if n.Tags().Len() != 0 {
 		v := n.Tags()
 		ps.Tags = &v
