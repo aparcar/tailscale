@@ -326,6 +326,7 @@ func NewDirect(opts Options) (*Direct, error) {
 	if strings.Contains(opts.ServerURL, "controlplane.tailscale.com") && envknob.Bool("TS_PANIC_IF_HIT_MAIN_CONTROL") {
 		c.panicOnUse = true
 	}
+
 	return c, nil
 }
 
@@ -510,6 +511,12 @@ func (c *Direct) doLogin(ctx context.Context, opt loginOpt) (mustRegen bool, new
 	serverNoiseKey := c.serverNoiseKey
 	authKey, isWrapped, wrappedSig, wrappedKey := tka.DecodeWrappedAuthkey(c.authKey, c.logf)
 	hi := c.hostInfoLocked()
+
+	// Populate PQC public key in Hostinfo if available
+	if len(persist.PQCPublicKey) > 0 {
+		hi.PQCPublicKey = persist.PQCPublicKey
+	}
+
 	backendLogID := hi.BackendLogID
 	expired := !c.expiry.IsZero() && c.expiry.Before(c.clock.Now())
 	c.mu.Unlock()
@@ -854,6 +861,13 @@ func (c *Direct) sendMapRequest(ctx context.Context, isStreaming bool, nu Netmap
 	serverURL := c.serverURL
 	serverNoiseKey := c.serverNoiseKey
 	hi := c.hostInfoLocked()
+
+	// Populate PQC public key in Hostinfo if available
+	persistStruct := persist.AsStruct()
+	if len(persistStruct.PQCPublicKey) > 0 {
+		hi.PQCPublicKey = persistStruct.PQCPublicKey
+	}
+
 	backendLogID := hi.BackendLogID
 	connectionHandleForTest := c.connectionHandleForTest
 	var epStrs []string
@@ -895,6 +909,7 @@ func (c *Direct) sendMapRequest(ctx context.Context, isStreaming bool, nu Netmap
 	}
 
 	nodeKey := persist.PublicNodeKey()
+
 	request := &tailcfg.MapRequest{
 		Version:                 tailcfg.CurrentCapabilityVersion,
 		KeepAlive:               true,
@@ -998,7 +1013,7 @@ func (c *Direct) sendMapRequest(ctx context.Context, isStreaming bool, nu Netmap
 		return nil
 	}
 
-	sess := newMapSession(persist.PrivateNodeKey(), nu, c.controlKnobs)
+	sess := newMapSession(persist.PrivateNodeKey(), persist.PQCSeed().AsSlice(), nu, c.controlKnobs)
 	defer sess.Close()
 	sess.cancel = cancel
 	sess.logf = c.logf

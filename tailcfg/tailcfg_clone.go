@@ -81,6 +81,7 @@ func (src *Node) Clone() *Node {
 			}
 		}
 	}
+	dst.PQCPublicKey = append(src.PQCPublicKey[:0:0], src.PQCPublicKey...)
 	return dst
 }
 
@@ -122,6 +123,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	IsWireGuardOnly               bool
 	IsJailed                      bool
 	ExitNodeDNSResolvers          []*dnstype.Resolver
+	PQCPublicKey                  []byte
 }{})
 
 // Clone makes a deep copy of Hostinfo.
@@ -138,6 +140,7 @@ func (src *Hostinfo) Clone() *Hostinfo {
 	dst.Services = append(src.Services[:0:0], src.Services...)
 	dst.NetInfo = src.NetInfo.Clone()
 	dst.SSH_HostKeys = append(src.SSH_HostKeys[:0:0], src.SSH_HostKeys...)
+	dst.PQCPublicKey = append(src.PQCPublicKey[:0:0], src.PQCPublicKey...)
 	if dst.Location != nil {
 		dst.Location = ptr.To(*src.Location)
 	}
@@ -187,6 +190,7 @@ var _HostinfoCloneNeedsRegeneration = Hostinfo(struct {
 	AppConnector    opt.Bool
 	ServicesHash    string
 	ExitNodeID      StableNodeID
+	PQCPublicKey    []byte
 	Location        *Location
 	TPM             *TPMInfo
 	StateEncrypted  opt.Bool

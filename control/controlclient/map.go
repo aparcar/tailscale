@@ -51,6 +51,7 @@ type mapSession struct {
 	controlKnobs   *controlknobs.Knobs // or nil
 	privateNodeKey key.NodePrivate
 	publicNodeKey  key.NodePublic
+	pqcSeed        []byte // ML-KEM-768 seed for post-quantum handshakes
 	logf           logger.Logf
 	vlogf          logger.Logf
 	machinePubKey  key.MachinePublic
@@ -101,12 +102,13 @@ type mapSession struct {
 // Modify its optional fields on the returned value before use.
 //
 // It must have its Close method called to release resources.
-func newMapSession(privateNodeKey key.NodePrivate, nu NetmapUpdater, controlKnobs *controlknobs.Knobs) *mapSession {
+func newMapSession(privateNodeKey key.NodePrivate, pqcSeed []byte, nu NetmapUpdater, controlKnobs *controlknobs.Knobs) *mapSession {
 	ms := &mapSession{
 		netmapUpdater:   nu,
 		controlKnobs:    controlKnobs,
 		privateNodeKey:  privateNodeKey,
 		publicNodeKey:   privateNodeKey.Public(),
+		pqcSeed:         pqcSeed,
 		lastDNSConfig:   new(tailcfg.DNSConfig),
 		lastUserProfile: map[tailcfg.UserID]tailcfg.UserProfileView{},
 
@@ -444,6 +446,7 @@ var (
 	patchKeyExpiry    = clientmetric.NewCounter("controlclient_patch_keyexpiry")
 	patchCapMap       = clientmetric.NewCounter("controlclient_patch_capmap")
 	patchKeySignature = clientmetric.NewCounter("controlclient_patch_keysig")
+	patchPQCPublicKey = clientmetric.NewCounter("controlclient_patch_pqcpublickey")
 
 	patchifiedPeer      = clientmetric.NewCounter("controlclient_patchified_peer")
 	patchifiedPeerEqual = clientmetric.NewCounter("controlclient_patchified_peer_equal")
@@ -566,6 +569,10 @@ func (ms *mapSession) updatePeersStateFromResponse(resp *tailcfg.MapResponse) (s
 			mut.CapMap = v
 			patchCapMap.Add(1)
 		}
+		if v := pc.PQCPublicKey; v != nil {
+			mut.PQCPublicKey = v
+			patchPQCPublicKey.Add(1)
+		}
 		ms.peers[pc.NodeID] = mut.View()
 	}
 
@@ -655,6 +662,11 @@ func peerChangeDiff(was tailcfg.NodeView, n *tailcfg.Node) (_ *tailcfg.PeerChang
 			// The whole point of using reflect in this function is to panic
 			// here in tests if we forget to handle a new field.
 			panic("unhandled field: " + field)
+		case "PQCPublicKey":
+			// Compare PQC public keys - if different, include in delta update
+			if !was.PQCPublicKey().Equal(n.PQCPublicKey) {
+				pc().PQCPublicKey = slices.Clone(n.PQCPublicKey)
+			}
 		case "computedHostIfDifferent", "ComputedName", "ComputedNameWithHost":
 			// Caller's responsibility to have populated these.
 			continue
@@ -865,6 +877,7 @@ func (ms *mapSession) netmap() *netmap.NetworkMap {
 	nm := &netmap.NetworkMap{
 		NodeKey:           ms.publicNodeKey,
 		PrivateKey:        ms.privateNodeKey,
+		PQCSeed:           ms.pqcSeed,
 		MachineKey:        ms.machinePubKey,
 		Peers:             peerViews,
 		UserProfiles:      make(map[tailcfg.UserID]tailcfg.UserProfileView),

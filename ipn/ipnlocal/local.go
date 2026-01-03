@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/mlkem"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
@@ -1342,6 +1343,7 @@ func (b *LocalBackend) populatePeerStatusLocked(sb *ipnstate.StatusBuilder) {
 			SSH_HostKeys:    p.Hostinfo().SSH_HostKeys().AsSlice(),
 			Location:        p.Hostinfo().Location().AsStruct(),
 			Capabilities:    p.Capabilities().AsSlice(),
+			PQCEnabled:      p.PQCPublicKey().Len() > 0,
 		}
 		for _, f := range b.extHost.Hooks().SetPeerStatus {
 			f(ps, p, cn)
@@ -1372,6 +1374,9 @@ func peerStatusFromNode(ps *ipnstate.PeerStatus, n tailcfg.NodeView) {
 	ps.ID = n.StableID()
 	ps.Created = n.Created()
 	ps.ExitNodeOption = tsaddr.ContainsExitRoutes(n.AllowedIPs())
+	if n.PQCPublicKey().Len() > 0 {
+		ps.PQCEnabled = true
+	}
 	if n.Tags().Len() != 0 {
 		v := n.Tags()
 		ps.Tags = &v
@@ -2408,6 +2413,25 @@ func (b *LocalBackend) Start(opts ipn.Options) error {
 	persistv := prefs.Persist().AsStruct()
 	if persistv == nil {
 		persistv = new(persist.Persist)
+	}
+
+	// Generate PQC keys if not already present. We do this early (before
+	// passing persist to controlclient) so the keys are immediately saved
+	// to disk and won't be regenerated on restart.
+	if len(persistv.PQCSeed) == 0 {
+		if dk, err := mlkem.GenerateKey768(); err == nil {
+			persistv.PQCSeed = dk.Bytes()
+			persistv.PQCPublicKey = dk.EncapsulationKey().Bytes()
+			b.logf("generated new PQC keys (ML-KEM-768)")
+			// Save the updated persist immediately
+			newPrefs := prefs.AsStruct()
+			newPrefs.Persist = persistv
+			if err := b.pm.SetPrefs(newPrefs.View(), ipn.NetworkProfile{}); err != nil {
+				b.logf("failed to save PQC keys: %v", err)
+			}
+		} else {
+			b.logf("failed to generate PQC keys: %v", err)
+		}
 	}
 
 	if b.portpoll != nil {
