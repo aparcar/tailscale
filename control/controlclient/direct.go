@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/mlkem"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -585,24 +584,9 @@ func (c *Direct) doLogin(ctx context.Context, opt loginOpt) (mustRegen bool, new
 		c.logf("Generating a new nodekey.")
 		persist.OldPrivateNodeKey = persist.PrivateNodeKey
 		tryingNewKey = key.NewNode()
-
-		// Generate PQC keys alongside the node key
-		if err := c.generatePQCKeys(persist); err != nil {
-			c.logf("Failed to generate PQC keys: %v", err)
-			// Continue without PQC - it's optional
-		}
 	default:
 		// Try refreshing the current key first
 		tryingNewKey = persist.PrivateNodeKey
-
-		// Generate PQC keys if not already present (for existing nodes upgrading to PQC)
-		if len(persist.PQCSeed) == 0 {
-			c.logf("Generating PQC keys for existing node (no PQC seed found)")
-			if err := c.generatePQCKeys(persist); err != nil {
-				c.logf("Failed to generate PQC keys: %v", err)
-				// Continue without PQC - it's optional
-			}
-		}
 	}
 	if !persist.OldPrivateNodeKey.IsZero() {
 		oldNodeKey = persist.OldPrivateNodeKey.Public()
@@ -782,26 +766,6 @@ func (c *Direct) doLogin(ctx context.Context, opt loginOpt) (mustRegen bool, new
 		return regen, "", nil, ctx.Err()
 	}
 	return false, resp.AuthURL, nil, nil
-}
-
-// generatePQCKeys generates new PQC (ML-KEM-768) keys for the node.
-// The seed and public key are stored in the persist structure.
-func (c *Direct) generatePQCKeys(persist *persist.Persist) error {
-	// Generate ML-KEM-768 keypair using Go's crypto/mlkem
-	dk, err := mlkem.GenerateKey768()
-	if err != nil {
-		return fmt.Errorf("generating ML-KEM-768 key: %w", err)
-	}
-
-	// Store the 64-byte seed (for deterministic key regeneration)
-	persist.PQCSeed = dk.Bytes()
-
-	// Store the 1184-byte public key
-	ek := dk.EncapsulationKey()
-	persist.PQCPublicKey = ek.Bytes()
-
-	c.logf("Generated new PQC keys (ML-KEM-768)")
-	return nil
 }
 
 // newEndpoints acquires c.mu and sets the local port and endpoints and reports

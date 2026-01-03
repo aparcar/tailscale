@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/mlkem"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
@@ -2412,6 +2413,25 @@ func (b *LocalBackend) Start(opts ipn.Options) error {
 	persistv := prefs.Persist().AsStruct()
 	if persistv == nil {
 		persistv = new(persist.Persist)
+	}
+
+	// Generate PQC keys if not already present. We do this early (before
+	// passing persist to controlclient) so the keys are immediately saved
+	// to disk and won't be regenerated on restart.
+	if len(persistv.PQCSeed) == 0 {
+		if dk, err := mlkem.GenerateKey768(); err == nil {
+			persistv.PQCSeed = dk.Bytes()
+			persistv.PQCPublicKey = dk.EncapsulationKey().Bytes()
+			b.logf("generated new PQC keys (ML-KEM-768)")
+			// Save the updated persist immediately
+			newPrefs := prefs.AsStruct()
+			newPrefs.Persist = persistv
+			if err := b.pm.SetPrefs(newPrefs.View(), ipn.NetworkProfile{}); err != nil {
+				b.logf("failed to save PQC keys: %v", err)
+			}
+		} else {
+			b.logf("failed to generate PQC keys: %v", err)
+		}
 	}
 
 	if b.portpoll != nil {
