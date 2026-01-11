@@ -2418,7 +2418,10 @@ func (b *LocalBackend) Start(opts ipn.Options) error {
 	// Generate PQC keys if not already present. We do this early (before
 	// passing persist to controlclient) so the keys are immediately saved
 	// to disk and won't be regenerated on restart.
-	if len(persistv.PQCSeed) == 0 {
+	// PQC can be disabled via TS_DISABLE_PQC=1 environment variable.
+	if envknob.Bool("TS_DISABLE_PQC") {
+		b.logf("PQC disabled via TS_DISABLE_PQC environment variable")
+	} else if len(persistv.PQCSeed) == 0 {
 		if dk, err := mlkem.GenerateKey768(); err == nil {
 			persistv.PQCSeed = dk.Bytes()
 			persistv.PQCPublicKey = dk.EncapsulationKey().Bytes()

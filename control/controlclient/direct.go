@@ -512,8 +512,8 @@ func (c *Direct) doLogin(ctx context.Context, opt loginOpt) (mustRegen bool, new
 	authKey, isWrapped, wrappedSig, wrappedKey := tka.DecodeWrappedAuthkey(c.authKey, c.logf)
 	hi := c.hostInfoLocked()
 
-	// Populate PQC public key in Hostinfo if available
-	if len(persist.PQCPublicKey) > 0 {
+	// Populate PQC public key in Hostinfo if available and not disabled
+	if len(persist.PQCPublicKey) > 0 && !envknob.Bool("TS_DISABLE_PQC") {
 		hi.PQCPublicKey = persist.PQCPublicKey
 	}
 
@@ -862,9 +862,9 @@ func (c *Direct) sendMapRequest(ctx context.Context, isStreaming bool, nu Netmap
 	serverNoiseKey := c.serverNoiseKey
 	hi := c.hostInfoLocked()
 
-	// Populate PQC public key in Hostinfo if available
+	// Populate PQC public key in Hostinfo if available and not disabled
 	persistStruct := persist.AsStruct()
-	if len(persistStruct.PQCPublicKey) > 0 {
+	if len(persistStruct.PQCPublicKey) > 0 && !envknob.Bool("TS_DISABLE_PQC") {
 		hi.PQCPublicKey = persistStruct.PQCPublicKey
 	}
 
