@@ -22,6 +22,7 @@ func (src *Config) Clone() *Config {
 	}
 	dst := new(Config)
 	*dst = *src
+	dst.PQCSeed = append(src.PQCSeed[:0:0], src.PQCSeed...)
 	dst.Addresses = append(src.Addresses[:0:0], src.Addresses...)
 	dst.DNS = append(src.DNS[:0:0], src.DNS...)
 	if src.Peers != nil {
@@ -38,6 +39,7 @@ var _ConfigCloneNeedsRegeneration = Config(struct {
 	Name           string
 	NodeID         tailcfg.StableNodeID
 	PrivateKey     key.NodePrivate
+	PQCSeed        []byte
 	Addresses      []netip.Prefix
 	MTU            uint16
 	DNS            []netip.Addr
@@ -64,6 +66,7 @@ func (src *Peer) Clone() *Peer {
 	if dst.V6MasqAddr != nil {
 		dst.V6MasqAddr = ptr.To(*src.V6MasqAddr)
 	}
+	dst.PQCPublicKey = append(src.PQCPublicKey[:0:0], src.PQCPublicKey...)
 	return dst
 }
 
@@ -76,5 +79,6 @@ var _PeerCloneNeedsRegeneration = Peer(struct {
 	V6MasqAddr          *netip.Addr
 	IsJailed            bool
 	PersistentKeepalive uint16
+	PQCPublicKey        []byte
 	WGEndpoint          key.NodePublic
 }{})

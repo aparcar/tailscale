@@ -30,6 +30,7 @@ type NetworkMap struct {
 	AllCaps    set.Set[tailcfg.NodeCapability] // set version of SelfNode.Capabilities + SelfNode.CapMap
 	NodeKey    key.NodePublic
 	PrivateKey key.NodePrivate
+	PQCSeed    []byte // ML-KEM-768 seed (64 bytes) for post-quantum handshakes
 	Expiry     time.Time
 	// Name is the DNS name assigned to this node.
 	// It is the MapResponse.Node.Name value and ends with a period.

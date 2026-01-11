@@ -306,6 +306,10 @@ type PeerStatus struct {
 	// etc by default.
 	ShareeNode bool `json:",omitempty"`
 
+	// PQCEnabled indicates whether this peer has a PQC (post-quantum cryptography)
+	// public key configured for ML-KEM-768 hybrid handshakes.
+	PQCEnabled bool `json:",omitempty"`
+
 	// InNetworkMap means that this peer was seen in our latest network map.
 	// In theory, all of InNetworkMap and InMagicSock and InEngine should all be true.
 	InNetworkMap bool
@@ -523,6 +527,9 @@ func (sb *StatusBuilder) AddPeer(peer key.NodePublic, st *PeerStatus) {
 	}
 	if st.ShareeNode {
 		e.ShareeNode = true
+	}
+	if st.PQCEnabled {
+		e.PQCEnabled = true
 	}
 	if st.Active {
 		e.Active = true

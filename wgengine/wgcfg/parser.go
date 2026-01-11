@@ -124,7 +124,7 @@ func (cfg *Config) handleDeviceLine(k, value mem.RO, valueBytes []byte) error {
 		if err != nil {
 			return err
 		}
-	case k.EqualString("listen_port") || k.EqualString("fwmark"):
+	case k.EqualString("listen_port") || k.EqualString("fwmark") || k.EqualString("pqc_public_key"):
 	// ignore
 	default:
 		return fmt.Errorf("unexpected IpcGetOperation key: %q", k.StringCopy())
@@ -174,6 +174,7 @@ func (cfg *Config) handlePeerLine(peer *Peer, k, value mem.RO, valueBytes []byte
 		}
 	case k.EqualString("replace_allowed_ips") ||
 		k.EqualString("preshared_key") ||
+		k.EqualString("pqc_public_key") ||
 		k.EqualString("last_handshake_time_sec") ||
 		k.EqualString("last_handshake_time_nsec") ||
 		k.EqualString("tx_bytes") ||

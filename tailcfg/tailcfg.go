@@ -507,6 +507,10 @@ type Node struct {
 	// ExitNodeDNSResolvers is the list of DNS servers that should be used when this
 	// node is marked IsWireGuardOnly and being used as an exit node.
 	ExitNodeDNSResolvers []*dnstype.Resolver `json:",omitempty"`
+
+	// PQCPublicKey is the node's ML-KEM-768 public key for post-quantum handshakes.
+	// Used for quantum-resistant peer-to-peer key exchange.
+	PQCPublicKey []byte `json:",omitempty"`
 }
 
 // HasCap reports whether the node has the given capability.
@@ -878,6 +882,7 @@ type Hostinfo struct {
 	AppConnector    opt.Bool       `json:",omitempty"` // if the client is running the app-connector service
 	ServicesHash    string         `json:",omitempty"` // opaque hash of the most recent list of tailnet services, change in hash indicates config should be fetched via c2n
 	ExitNodeID      StableNodeID   `json:",omitzero"`  // the client’s selected exit node, empty when unselected.
+	PQCPublicKey    []byte         `json:",omitempty"` // ML-KEM-768 public key for post-quantum cryptography (1184 bytes)
 
 	// Location represents geographical location data about a
 	// Tailscale host. Location is optional and only set if
@@ -3118,6 +3123,9 @@ type PeerChange struct {
 
 	// DiscoKey, if non-nil, means that the NodeID's discokey changed.
 	DiscoKey *key.DiscoPublic `json:",omitempty"`
+
+	// PQCPublicKey, if non-nil, means that the NodeID's PQC public key changed.
+	PQCPublicKey []byte `json:",omitempty"`
 
 	// Online, if non-nil, means that the NodeID's online status changed.
 	Online *bool `json:",omitempty"`

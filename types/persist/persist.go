@@ -27,6 +27,14 @@ type Persist struct {
 	NetworkLockKey    key.NLPrivate
 	NodeID            tailcfg.StableNodeID
 
+	// PQCSeed is the ML-KEM-768 seed for post-quantum cryptography.
+	// Stored as raw bytes (64 bytes for ML-KEM-768 deterministic key generation).
+	PQCSeed []byte `json:",omitempty"`
+
+	// PQCPublicKey is the ML-KEM-768 public key for post-quantum cryptography.
+	// Stored as raw bytes (1184 bytes for ML-KEM-768 public key).
+	PQCPublicKey []byte `json:",omitempty"`
+
 	// DisallowedTKAStateIDs stores the tka.State.StateID values which
 	// this node will not operate network lock on. This is used to
 	// prevent bootstrapping TKA onto a key authority which was forcibly

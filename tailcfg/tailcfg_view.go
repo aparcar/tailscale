@@ -176,7 +176,8 @@ func (v NodeView) IsJailed() bool        { return v.ж.IsJailed }
 func (v NodeView) ExitNodeDNSResolvers() views.SliceView[*dnstype.Resolver, dnstype.ResolverView] {
 	return views.SliceOfViews[*dnstype.Resolver, dnstype.ResolverView](v.ж.ExitNodeDNSResolvers)
 }
-func (v NodeView) Equal(v2 NodeView) bool { return v.ж.Equal(v2.ж) }
+func (v NodeView) PQCPublicKey() views.ByteSlice[[]byte] { return views.ByteSliceOf(v.ж.PQCPublicKey) }
+func (v NodeView) Equal(v2 NodeView) bool                { return v.ж.Equal(v2.ж) }
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _NodeViewNeedsRegeneration = Node(struct {
@@ -216,6 +217,7 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	IsWireGuardOnly               bool
 	IsJailed                      bool
 	ExitNodeDNSResolvers          []*dnstype.Resolver
+	PQCPublicKey                  []byte
 }{})
 
 // View returns a read-only view of Hostinfo.
@@ -301,8 +303,11 @@ func (v HostinfoView) UserspaceRouter() opt.Bool              { return v.ж.User
 func (v HostinfoView) AppConnector() opt.Bool                 { return v.ж.AppConnector }
 func (v HostinfoView) ServicesHash() string                   { return v.ж.ServicesHash }
 func (v HostinfoView) ExitNodeID() StableNodeID               { return v.ж.ExitNodeID }
-func (v HostinfoView) Location() LocationView                 { return v.ж.Location.View() }
-func (v HostinfoView) TPM() views.ValuePointer[TPMInfo]       { return views.ValuePointerOf(v.ж.TPM) }
+func (v HostinfoView) PQCPublicKey() views.ByteSlice[[]byte] {
+	return views.ByteSliceOf(v.ж.PQCPublicKey)
+}
+func (v HostinfoView) Location() LocationView           { return v.ж.Location.View() }
+func (v HostinfoView) TPM() views.ValuePointer[TPMInfo] { return views.ValuePointerOf(v.ж.TPM) }
 
 func (v HostinfoView) StateEncrypted() opt.Bool   { return v.ж.StateEncrypted }
 func (v HostinfoView) Equal(v2 HostinfoView) bool { return v.ж.Equal(v2.ж) }
@@ -347,6 +352,7 @@ var _HostinfoViewNeedsRegeneration = Hostinfo(struct {
 	AppConnector    opt.Bool
 	ServicesHash    string
 	ExitNodeID      StableNodeID
+	PQCPublicKey    []byte
 	Location        *Location
 	TPM             *TPMInfo
 	StateEncrypted  opt.Bool
